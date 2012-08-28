@@ -83,6 +83,14 @@ public class PerformReleaseMojo
     private boolean useReleaseProfile;
 
     /**
+     * Commits to do are atomic or by project.
+     *
+     * @parameter expression="${commitByProject}" default-value="false"
+     * @since 2.0-beta-5
+     */
+    private boolean commitByProject;
+
+    /**
      * {@inheritDoc}
      */
     protected String getAdditionalProfiles()
@@ -128,6 +136,7 @@ public class PerformReleaseMojo
                 }
             }
             releaseDescriptor.setPerformGoals( goals );
+            releaseDescriptor.setCommitByProject( commitByProject );
 
             releaseManager.perform( releaseDescriptor, getReleaseEnvironment(), reactorProjects );
         }
