@@ -21,6 +21,7 @@ package org.apache.maven.shared.release.phase;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.List;
 
 import org.apache.maven.project.MavenProject;
@@ -209,16 +210,122 @@ public class CheckoutProjectFromScm
 
         checkoutDirectory.mkdirs();
 
-        CheckOutScmResult scmResult;
-
-        scmResult = provider.checkOut( repository, new ScmFileSet( checkoutDirectory ),
-                                       new ScmTag( releaseDescriptor.getScmReleaseLabel() ) );
-
-        if ( releaseDescriptor.isLocalCheckout() && !scmResult.isSuccess() )
+        CheckOutScmResult scmResult = new CheckOutScmResult(null, null, null, true);
+        
+        if ( releaseDescriptor.isCommitByProject() )
         {
-            // this is not beautiful but needed to indicate that the execute() method
-            // should continue in the parent directory
-            return null;
+            // flat project structure
+            String rootProjectBaseDir = null;
+            try
+            {
+                rootProjectBaseDir = ReleaseUtil.getCommonBasedir( reactorProjects );
+            }
+            catch ( IOException e )
+            {
+                result.setResultCode( ReleaseResult.ERROR );
+                logError( result, e.getMessage() );
+
+                throw new ReleaseExecutionException( "Unable to determine the base base directory for the project: " +
+                        e.getMessage(), e );
+            }
+            Iterator reactorProjectsIter = reactorProjects.iterator();
+            while ( reactorProjectsIter.hasNext() && scmResult.isSuccess() )
+            {
+                MavenProject mavenProject = ( MavenProject ) reactorProjectsIter.next();
+                File mavenCheckoutProjectDirectory;
+                String mavenProjectBaseDir = mavenProject.getBasedir().getAbsolutePath();
+                if ( mavenProjectBaseDir.length() > rootProjectBaseDir.length() )
+                {
+                    String relativeProjectDir = mavenProjectBaseDir.substring( rootProjectBaseDir
+                            .length() + 1 );
+                    mavenCheckoutProjectDirectory = new File( checkoutDirectory, relativeProjectDir );
+                }
+                else
+                {
+                    mavenCheckoutProjectDirectory = checkoutDirectory;
+                }
+
+                try
+                {
+                    repository = scmRepositoryConfigurator.getConfiguredRepository( mavenProject.getScm().getConnection(), releaseDescriptor,
+                            releaseEnvironment.getSettings() );
+
+                    provider = scmRepositoryConfigurator.getRepositoryProvider( repository );
+                }
+                catch ( ScmRepositoryException e )
+                {
+                    result.setResultCode( ReleaseResult.ERROR );
+                    logError( result, e.getMessage() );
+
+                    throw new ReleaseScmRepositoryException( e.getMessage(), e.getValidationMessages() );
+                }
+                catch ( NoSuchScmProviderException e )
+                {
+                    result.setResultCode( ReleaseResult.ERROR );
+                    logError( result, e.getMessage() );
+
+                    throw new ReleaseExecutionException( "Unable to configure SCM repository: "
+                            + e.getMessage(), e );
+                }
+
+                try
+                {
+                    scmResult = provider.checkOut( repository, new ScmFileSet(
+                            mavenCheckoutProjectDirectory ), new ScmTag( releaseDescriptor
+                            .getScmReleaseLabel() ) );
+                }
+                catch ( ScmException e )
+                {
+                    result.setResultCode( ReleaseResult.ERROR );
+                    logError( result, e.getMessage() );
+
+                    throw new ReleaseExecutionException(
+                            "An error is occurred in the checkout process: " + e.getMessage(), e );
+                }
+            }
+        }
+        else
+        {
+//            try
+//            {
+//                repository = scmRepositoryConfigurator.getConfiguredRepository( releaseDescriptor,
+//                        releaseEnvironment.getSettings() );
+//
+//                provider = scmRepositoryConfigurator.getRepositoryProvider( repository );
+//            }
+//            catch ( ScmRepositoryException e )
+//            {
+//                result.setResultCode( ReleaseResult.ERROR );
+//                logError( result, e.getMessage() );
+//
+//                throw new ReleaseScmRepositoryException( e.getMessage(), e.getValidationMessages() );
+//            }
+//            catch ( NoSuchScmProviderException e )
+//            {
+//                result.setResultCode( ReleaseResult.ERROR );
+//                logError( result, e.getMessage() );
+//
+//                throw new ReleaseExecutionException( "Unable to configure SCM repository: " + e.getMessage(), e );
+//            }
+
+            try
+            {
+                scmResult = provider.checkOut( repository, new ScmFileSet( checkoutDirectory ),
+                        new ScmTag( releaseDescriptor.getScmReleaseLabel() ) );
+                if ( releaseDescriptor.isLocalCheckout() && !scmResult.isSuccess() )
+                {
+                    // this is not beautiful but needed to indicate that the execute() method
+                    // should continue in the parent directory
+                    return null;
+                }
+            }
+            catch ( ScmException e )
+            {
+                result.setResultCode( ReleaseResult.ERROR );
+                logError( result, e.getMessage() );
+
+                throw new ReleaseExecutionException( "An error is occurred in the checkout process: " + e.getMessage(), e );
+            }
         }
 
         String scmRelativePathProjectDirectory = scmResult.getRelativePathProjectDirectory();

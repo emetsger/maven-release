@@ -20,6 +20,7 @@ package org.apache.maven.shared.release.phase;
  */
 
 import java.io.File;
+import java.util.Iterator;
 import java.util.List;
 
 import org.apache.maven.project.MavenProject;
@@ -106,7 +107,7 @@ public class ScmTagPhase
             throw new ReleaseExecutionException( "Unable to configure SCM repository: " + e.getMessage(), e );
         }
 
-        TagScmResult result;
+        TagScmResult result = new TagScmResult( null, null, null, true );
         try
         {
             // TODO: want includes/excludes?
@@ -124,14 +125,28 @@ public class ScmTagPhase
                     "ScmTagPhase :: scmTagParameters scmRevision " + releaseDescriptor.getScmReleasedPomRevision() );
                 getLogger().debug( "ScmTagPhase :: fileSet  " + fileSet );
             }
-            result = provider.tag( repository, fileSet, tagName, scmTagParameters );
+
+            if ( releaseDescriptor.isCommitByProject() )
+            {
+                Iterator reactorProjectsIter = reactorProjects.iterator();
+                while ( reactorProjectsIter.hasNext() && result.isSuccess() )
+                {
+                    MavenProject mavenProject = ( MavenProject ) reactorProjectsIter.next();
+                    fileSet = new ScmFileSet( mavenProject.getBasedir() );
+                    result = provider.tag( repository, fileSet, tagName, scmTagParameters );
+                }
+            }
+            else
+            {
+                result = provider.tag( repository, fileSet, tagName, scmTagParameters );
+            }
         }
         catch ( ScmException e )
         {
             throw new ReleaseExecutionException( "An error is occurred in the tag process: " + e.getMessage(), e );
         }
 
-        if ( !result.isSuccess() )
+        if ( result == null || !result.isSuccess() )
         {
             throw new ReleaseScmCommandException( "Unable to tag SCM", result );
         }
